@@ -28,12 +28,12 @@
     positionBadge: document.getElementById("positionBadge")
   };
 
-  const VIEW_DISTANCE = 950;
-  const ROAD_SLICES = 92;
+  const VIEW_DISTANCE = 1180;
+  const ROAD_STRIPE_LENGTH = 22;
+  const LANE_MARKER_LENGTH = 34;
   const MAX_DPR = 2;
-  const WORLD_SPEED_SCALE = 1.65;
   const SPEEDOMETER_MAX = 420;
-  const SPEEDOMETER_MAX_BONUS = 100;
+  const SPEEDOMETER_MAX_BONUS = 115;
 
   const tracks = [
     {
@@ -365,17 +365,36 @@
     return base + Math.sin(distance * 0.0019 + state.trackIndex) * 0.04;
   }
 
+  // Mapeamento de velocidade: o velocímetro continua em km/h, mas a estrada usa
+  // uma escala arcade não linear para dar sensação real de avanço na tela.
+  function mapSpeedToRoadKmh(speedKmh, options = {}) {
+    const cleanSpeed = Math.max(0, speedKmh || 0);
+    if (cleanSpeed <= 0.5) return 0;
+    const ratio = clamp(cleanSpeed / SPEEDOMETER_MAX, 0, 1.22);
+    const multiplier = 1.55 + ratio * 2.1 + Math.pow(ratio, 2) * 0.55;
+    const launchPull = 38 * Math.exp(-cleanSpeed / 58);
+    const turboBonus = options.turbo ? 95 + cleanSpeed * 0.32 : 0;
+    return cleanSpeed * multiplier + launchPull + turboBonus;
+  }
+
+  function currentRoadKmh() {
+    return mapSpeedToRoadKmh(player.speed, {
+      turbo: input.turbo && player.turbo > 0 && player.speed > 42 && player.fuel > 0
+    });
+  }
+
   function project(relativeDistance, laneX = 0) {
     const track = currentTrack();
-    const horizon = H * 0.34;
+    const speedRatio = clamp(player.speed / SPEEDOMETER_MAX, 0, 1);
+    const horizon = H * (0.345 - speedRatio * 0.048);
     const t = clamp(1 - relativeDistance / VIEW_DISTANCE, 0, 1);
-    const perspective = Math.pow(t, 1.35);
-    const y = horizon + Math.pow(t, 2.04) * (H - horizon) - getHillAt(player.progress + relativeDistance, track) * (1 - t) * H * 0.12;
-    const roadWidth = W * (0.07 + 0.98 * perspective);
-    const curve = getCurveAt(player.progress + relativeDistance, track) * Math.pow(1 - t, 0.82);
-    const center = W / 2 + curve * W * 0.36 + Math.sin((player.progress + relativeDistance) * 0.0025) * track.wave * W * 0.014 * (1 - t);
+    const perspective = Math.pow(t, 1.25 - speedRatio * 0.08);
+    const y = horizon + Math.pow(t, 1.92 - speedRatio * 0.16) * (H - horizon) - getHillAt(player.progress + relativeDistance, track) * (1 - t) * H * 0.14;
+    const roadWidth = W * (0.055 + (1.03 + speedRatio * 0.18) * perspective);
+    const curve = getCurveAt(player.progress + relativeDistance, track) * Math.pow(1 - t, 0.80);
+    const center = W / 2 + curve * W * (0.36 + speedRatio * 0.08) + Math.sin((player.progress + relativeDistance) * 0.0025) * track.wave * W * 0.014 * (1 - t);
     const x = center + laneX * roadWidth * 0.42;
-    const scale = clamp(roadWidth / (W * 0.86), 0.05, 1.55);
+    const scale = clamp(roadWidth / (W * 0.82), 0.045, 1.72);
     return { x, y, center, roadWidth, scale, t };
   }
 
@@ -520,7 +539,7 @@
     hideOverlay();
     unlockMusic();
     const track = currentTrack();
-    showToast(`Fase ${state.trackIndex + 1}: ${track.name} — segure ACELERAR para ganhar velocidade`);
+    showToast(`Fase ${state.trackIndex + 1}: ${track.name} — velocidade visual remapeada, segure ACELERAR`);
   }
 
   function retryTrack() {
@@ -607,7 +626,7 @@
       const curvePenalty = Math.abs(getCurveAt(rival.progress, track)) * (rival.boss ? 8 : 14);
       const pulse = Math.sin(rival.progress * 0.011 + rival.seed) * (rival.boss ? 3 : 5);
       const rivalSpeed = clamp(rival.baseSpeed + pulse - curvePenalty, 75, track.maxSpeed + (rival.boss ? 32 : 8));
-      rival.progress += (rivalSpeed / 3.6) * dt;
+      rival.progress += (mapSpeedToRoadKmh(rivalSpeed, { turbo: rival.boss }) / 3.6) * dt;
       rival.x = clamp(rival.laneBase + Math.sin(rival.progress * 0.008 + rival.seed) * (rival.boss ? 0.15 : 0.24), -0.9, 0.9);
     }
   }
@@ -615,7 +634,7 @@
   function updateTraffic(dt) {
     for (const car of traffic) {
       if (car.done) continue;
-      car.progress += (car.speed / 3.6) * WORLD_SPEED_SCALE * dt;
+      car.progress += (mapSpeedToRoadKmh(car.speed) / 3.6) * dt;
       car.x = clamp(car.laneBase + Math.sin(car.progress * 0.012 + car.seed) * 0.12, -0.92, 0.92);
       if (car.progress > state.raceDistance + 200) car.done = true;
     }
@@ -700,52 +719,62 @@
     const braking = input.brake;
     const offRoad = Math.abs(player.x) > 1.02;
     const turboing = input.turbo && player.turbo > 0 && player.speed > 42 && player.fuel > 0;
-    const cruiseSpeed = player.fuel <= 0 ? 64 : track.maxSpeed * 0.82;
-    const maxSpeed = (player.fuel <= 0 ? 92 : track.maxSpeed) + (turboing ? SPEEDOMETER_MAX_BONUS : 0);
-    const launchBoost = player.speed < 80 ? 1.35 : 1;
+    const maxSpeed = (player.fuel <= 0 ? 88 : track.maxSpeed) + (turboing ? SPEEDOMETER_MAX_BONUS : 0);
+    const speedRatio = clamp(player.speed / Math.max(1, maxSpeed), 0, 1.35);
+    const curveAhead = Math.abs(getCurveAt(player.progress + 210, track));
 
-    // Aceleração automática leve para o carro não ficar parado no celular.
-    // Segurar ACELERAR dá força total; TURBO passa dos 300 km/h nas fases avançadas.
     if (braking) {
-      player.speed -= 260 * dt;
-    } else if (throttlePressed) {
-      player.speed += 260 * launchBoost * dt;
-    } else if (player.speed < cruiseSpeed) {
-      player.speed += 142 * dt;
+      player.speed -= (385 + player.speed * 0.42) * dt;
+    } else if (player.fuel > 0) {
+      const torqueCurve = Math.pow(1 - clamp(player.speed / Math.max(1, maxSpeed), 0, 1), 1.35);
+      const launchTorque = player.speed < 72 ? 78 : 0;
+      const throttlePower = throttlePressed ? 1 : 0.24;
+      const engineAccel = (112 + 285 * torqueCurve + launchTorque) * throttlePower;
+      const autoCruise = Math.min(track.maxSpeed * 0.46, 138);
+
+      if (throttlePressed || player.speed < autoCruise) {
+        player.speed += engineAccel * dt;
+      } else {
+        player.speed -= (20 + player.speed * 0.045 + curveAhead * 16) * dt;
+      }
     } else {
-      player.speed -= (8 + player.speed * 0.01) * dt;
+      player.speed -= (28 + player.speed * 0.08) * dt;
     }
 
     if (turboing) {
-      player.speed += 170 * dt;
-      player.turbo = clamp(player.turbo - 35 * dt, 0, 100);
+      const turboAccel = 128 + (1 - clamp(player.speed / Math.max(1, maxSpeed), 0, 1)) * 92;
+      player.speed += turboAccel * dt;
+      player.turbo = clamp(player.turbo - 38 * dt, 0, 100);
       player.turboFlash = 0.12;
-      cameraShake = Math.max(cameraShake, 5.5);
+      cameraShake = Math.max(cameraShake, 6.8);
     } else {
-      player.turbo = clamp(player.turbo + 5.6 * dt, 0, 100);
+      player.turbo = clamp(player.turbo + 5.9 * dt, 0, 100);
     }
+
+    const roadLimitPenalty = curveAhead * curveAhead * clamp(player.speed / track.maxSpeed, 0, 1.4) * 32;
+    player.speed -= roadLimitPenalty * dt;
 
     if (offRoad) {
       const offAmount = Math.abs(player.x) - 1;
-      player.speed -= (62 + offAmount * 110) * dt;
-      player.durability = clamp(player.durability - offAmount * 3.2 * dt, 0, 100);
-      cameraShake = Math.max(cameraShake, 5);
+      player.speed -= (90 + offAmount * 165 + player.speed * 0.10) * dt;
+      player.durability = clamp(player.durability - offAmount * 4.4 * dt, 0, 100);
+      cameraShake = Math.max(cameraShake, 6.5);
     }
 
     player.speed = clamp(player.speed, 0, maxSpeed);
     player.gear = player.speed < 4 ? 0 : clamp(Math.floor((player.speed / Math.max(1, track.maxSpeed + SPEEDOMETER_MAX_BONUS)) * 6) + 1, 1, turboing ? 7 : 6);
 
-    const speedRatio = clamp(player.speed / Math.max(1, track.maxSpeed), 0, 1.4);
-    const steerStrength = (0.52 + speedRatio * 1.34) * dt;
+    const steeringRatio = clamp(player.speed / Math.max(1, track.maxSpeed), 0.18, 1.42);
+    const steerStrength = (0.46 + steeringRatio * 1.12) * dt;
     if (input.left) player.x -= steerStrength;
     if (input.right) player.x += steerStrength;
-    if (touchSteer.active) player.x = lerp(player.x, touchSteer.target, clamp(dt * 7, 0, 1));
+    if (touchSteer.active) player.x = lerp(player.x, touchSteer.target, clamp(dt * 8.5, 0, 1));
 
-    const curvePull = getCurveAt(player.progress + 170, track) * speedRatio * 0.22 * dt;
+    const curvePull = getCurveAt(player.progress + 190, track) * steeringRatio * 0.32 * dt;
     player.x -= curvePull;
     player.x = clamp(player.x, -1.32, 1.32);
 
-    const fuelDrain = (0.024 + player.speed * 0.00068 + (turboing ? 0.18 : 0)) * dt;
+    const fuelDrain = (0.018 + player.speed * 0.00044 + (throttlePressed ? 0.010 : 0) + (turboing ? 0.16 : 0)) * dt;
     player.fuel = clamp(player.fuel - fuelDrain, 0, 100);
     if (player.fuel <= 0 && player.speed < 3) {
       triggerGameOver("Acabou o combustível. Pegue galões verdes durante a corrida para continuar.");
@@ -757,14 +786,14 @@
       return;
     }
 
-    player.progress += (player.speed / 3.6) * WORLD_SPEED_SCALE * dt;
+    player.progress += (currentRoadKmh() / 3.6) * dt;
     player.lap = clamp(Math.floor(player.progress / track.length) + 1, 1, track.laps);
 
     if (track.boss && !state.bossMessageShown) {
       const boss = rivals.find((rival) => rival.boss);
-      if (boss && boss.progress - player.progress < 220 && boss.progress > player.progress) {
+      if (boss && boss.progress - player.progress < 260 && boss.progress > player.progress) {
         state.bossMessageShown = true;
-        showToast("Chefão à frente! Use turbo para ultrapassar.");
+        showToast("Chefão à frente! Use turbo nas retas para ultrapassar.");
       }
     }
 
@@ -875,66 +904,84 @@
 
   function drawRoad() {
     const track = currentTrack();
-    const horizon = H * 0.34;
+    const speedRatio = clamp(player.speed / SPEEDOMETER_MAX, 0, 1);
+    const horizon = H * (0.345 - speedRatio * 0.048);
     const ground = ctx.createLinearGradient(0, horizon, 0, H);
     ground.addColorStop(0, track.grassA);
     ground.addColorStop(1, track.grassB);
     ctx.fillStyle = ground;
     ctx.fillRect(0, horizon, W, H - horizon);
 
-    for (let i = 0; i < ROAD_SLICES; i += 1) {
-      const t1 = i / ROAD_SLICES;
-      const t2 = (i + 1) / ROAD_SLICES;
-      const rel1 = VIEW_DISTANCE * (1 - t1);
-      const rel2 = VIEW_DISTANCE * (1 - t2);
-      const p1 = project(rel1, 0);
-      const p2 = project(rel2, 0);
-      const segment = Math.floor((player.progress + rel2) / 48);
-      const alt = segment % 2 === 0;
+    const stripeLength = ROAD_STRIPE_LENGTH;
+    const startWorld = Math.floor(player.progress / stripeLength) * stripeLength;
+    const segments = [];
+
+    for (let world = startWorld; world < player.progress + VIEW_DISTANCE + stripeLength; world += stripeLength) {
+      const near = Math.max(world - player.progress, 0.25);
+      const far = Math.min(world + stripeLength - player.progress, VIEW_DISTANCE);
+      if (far <= 0 || near >= VIEW_DISTANCE) continue;
+      segments.push({ world, near, far });
+    }
+
+    for (let i = segments.length - 1; i >= 0; i -= 1) {
+      const segment = segments[i];
+      const pNear = project(segment.near, 0);
+      const pFar = project(segment.far, 0);
+      const band = Math.floor(segment.world / stripeLength);
+      const alt = band % 2 === 0;
       const roadColor = alt ? track.roadA : track.roadB;
       const rumbleColor = alt ? track.rumbleA : track.rumbleB;
       const grassColor = alt ? track.grassA : track.grassB;
 
       ctx.fillStyle = grassColor;
-      ctx.fillRect(0, p1.y, W, Math.max(1, p2.y - p1.y + 1));
+      ctx.fillRect(0, pFar.y - 1, W, Math.max(1, pNear.y - pFar.y + 2));
 
-      const roadHalf1 = p1.roadWidth * 0.47;
-      const roadHalf2 = p2.roadWidth * 0.47;
-      const rumbleHalf1 = p1.roadWidth * 0.54;
-      const rumbleHalf2 = p2.roadWidth * 0.54;
+      const roadHalfFar = pFar.roadWidth * 0.47;
+      const roadHalfNear = pNear.roadWidth * 0.47;
+      const rumbleHalfFar = pFar.roadWidth * 0.555;
+      const rumbleHalfNear = pNear.roadWidth * 0.555;
 
       drawQuad(
-        p1.center - rumbleHalf1,
-        p1.y,
-        p1.center + rumbleHalf1,
-        p1.y,
-        p2.center + rumbleHalf2,
-        p2.y,
-        p2.center - rumbleHalf2,
-        p2.y,
+        pFar.center - rumbleHalfFar,
+        pFar.y,
+        pFar.center + rumbleHalfFar,
+        pFar.y,
+        pNear.center + rumbleHalfNear,
+        pNear.y,
+        pNear.center - rumbleHalfNear,
+        pNear.y,
         rumbleColor
       );
 
       drawQuad(
-        p1.center - roadHalf1,
-        p1.y,
-        p1.center + roadHalf1,
-        p1.y,
-        p2.center + roadHalf2,
-        p2.y,
-        p2.center - roadHalf2,
-        p2.y,
+        pFar.center - roadHalfFar,
+        pFar.y,
+        pFar.center + roadHalfFar,
+        pFar.y,
+        pNear.center + roadHalfNear,
+        pNear.y,
+        pNear.center - roadHalfNear,
+        pNear.y,
         roadFlash > 0 ? "#fff0c4" : roadColor
       );
 
-      const marker = Math.floor((player.progress + rel2) / 78) % 2 === 0;
-      if (marker && p2.roadWidth > 80) {
-        drawLaneMarker(p1, p2, -0.17, track.lane);
-        drawLaneMarker(p1, p2, 0.17, track.lane);
+      const markerBand = Math.floor(segment.world / LANE_MARKER_LENGTH);
+      const laneMarker = markerBand % 3 !== 1;
+      if (laneMarker && pNear.roadWidth > 65) {
+        drawLaneMarker(pFar, pNear, -0.17, track.lane);
+        drawLaneMarker(pFar, pNear, 0.17, track.lane);
       }
 
-      if (i % 17 === 0 && p2.roadWidth > 160) {
-        drawStartSideStripe(p1, p2);
+      if (alt && pNear.roadWidth > 110) {
+        drawStartSideStripe(pFar, pNear);
+      }
+
+      if (speedRatio > 0.16 && segment.near < 360 && band % 2 === 0) {
+        const alpha = 0.05 + speedRatio * 0.10;
+        ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+        const lineY = lerp(pFar.y, pNear.y, 0.62);
+        const lineW = pNear.roadWidth * (0.12 + speedRatio * 0.20);
+        ctx.fillRect(pNear.center - lineW * 0.5, lineY, lineW, Math.max(1, 2 + speedRatio * 3));
       }
     }
   }
@@ -1003,9 +1050,9 @@
 
   function roadsideObjects() {
     const objects = [];
-    const start = Math.floor(player.progress / 120) * 120;
-    for (let d = start + 160; d < player.progress + VIEW_DISTANCE; d += 130) {
-      const id = Math.floor(d / 130);
+    const start = Math.floor(player.progress / 72) * 72;
+    for (let d = start + 95; d < player.progress + VIEW_DISTANCE; d += 72) {
+      const id = Math.floor(d / 72);
       const side = id % 2 === 0 ? -1 : 1;
       const kindIndex = (id + state.trackIndex) % 5;
       objects.push({
@@ -1212,21 +1259,22 @@
   }
 
   function drawSpeedLines() {
-    if (player.speed < 125 || state.screen !== "running") return;
-    const intensity = clamp((player.speed - 125) / 250, 0, 1);
-    const lineCount = Math.floor(8 + intensity * 20);
+    if (player.speed < 55 || state.screen !== "running") return;
+    const intensity = clamp((player.speed - 55) / 285, 0, 1);
+    const roadKmh = currentRoadKmh();
+    const lineCount = Math.floor(10 + intensity * 34);
     ctx.save();
-    ctx.strokeStyle = `rgba(255, 255, 255, ${0.13 + intensity * 0.24})`;
-    ctx.lineWidth = 2 + intensity * 3;
+    ctx.strokeStyle = `rgba(255, 255, 255, ${0.10 + intensity * 0.30})`;
+    ctx.lineWidth = 1.5 + intensity * 4.2;
     ctx.lineCap = "round";
     for (let i = 0; i < lineCount; i += 1) {
       const side = i % 2 === 0 ? -1 : 1;
-      const x = side < 0 ? randomRange(0, W * 0.22) : randomRange(W * 0.78, W);
-      const y = randomRange(H * 0.38, H * 0.92);
-      const len = randomRange(28, 84) * (1 + intensity * 1.15);
+      const x = side < 0 ? randomRange(0, W * 0.27) : randomRange(W * 0.73, W);
+      const y = randomRange(H * 0.35, H * 0.96);
+      const len = randomRange(24, 104) * (1 + intensity * 1.45 + roadKmh / 1800);
       ctx.beginPath();
       ctx.moveTo(x, y);
-      ctx.lineTo(x - side * len, y + len * 0.18);
+      ctx.lineTo(x - side * len, y + len * 0.20);
       ctx.stroke();
     }
     ctx.restore();
@@ -1382,7 +1430,7 @@
       if (state.controlsHelpOpen) {
         showOverlay(
           "Controles",
-          "PC: setas ou WASD dirigem e aceleram, Espaço usa turbo, P pausa e M liga a música. Celular: segure ACELERAR no canto direito para ganhar velocidade, use TURBO para passar dos 300 km/h e arraste o dedo na pista para ajustar a direção.",
+          "PC: setas ou WASD dirigem e aceleram, Espaço usa turbo, P pausa e M liga a música. Celular: segure ACELERAR no canto direito; o novo mapeamento faz a pista correr de verdade conforme o velocímetro sobe. Use TURBO nas retas e arraste o dedo na pista para ajustar a direção.",
           state.screen === "menu" ? "Iniciar corrida" : "Continuar",
           () => {
             state.controlsHelpOpen = false;
@@ -1398,7 +1446,7 @@
 
     showOverlay(
       "Pronto para acelerar?",
-      "Complete as 6 fases, colete combustível, use turbo nas retas e ultrapasse o chefão na última pista. Clique em iniciar para liberar a trilha sonora enviada.",
+      "Complete as 6 fases, colete combustível, use turbo nas retas e ultrapasse o chefão na última pista. Esta versão tem mapeamento novo de velocidade, pista com marcadores móveis e sensação de avanço bem mais forte.",
       "Iniciar corrida",
       startChampionship
     );
