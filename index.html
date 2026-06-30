@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Dom Carlos Turbo Gear - Velocidade</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div class="page-shell">
+    <header class="school-header">
+      <div>
+        <span class="school-name">Colégio Estadual Dom Carlos</span>
+        <strong>Curso Técnico de Desenvolvimento de Sistemas</strong>
+      </div>
+      <button id="musicButton" class="music-button" type="button" aria-label="Tocar ou pausar música">♫ Música</button>
+    </header>
+
+    <main class="game-card">
+      <section class="top-panel">
+        <div class="title-block">
+          <p class="eyebrow">Projeto HTML • CSS • JavaScript</p>
+          <h1>Dom Carlos Turbo Gear</h1>
+          <p>Corrida retrô pseudo‑3D com 6 fases, velocidade real, velocímetro, marchas, adversários, turbo, combustível, obstáculos, pickups e chefão final.</p>
+        </div>
+        <div class="status-cards" aria-label="Informações da corrida">
+          <article>
+            <span>Fase</span>
+            <strong id="stageBadge">1 / 6</strong>
+          </article>
+          <article>
+            <span>Pista</span>
+            <strong id="trackBadge">Cidade Neon</strong>
+          </article>
+          <article>
+            <span>Posição</span>
+            <strong id="positionBadge">8º</strong>
+          </article>
+        </div>
+      </section>
+
+      <section class="canvas-wrap" id="canvasWrap">
+        <canvas id="gameCanvas" aria-label="Jogo de corrida"></canvas>
+
+        <div id="overlay" class="overlay visible">
+          <div class="overlay-card">
+            <p class="eyebrow">Copa Dom Carlos</p>
+            <h2 id="overlayTitle">Pronto para acelerar?</h2>
+            <p id="overlayText">Complete as 6 fases, ultrapasse rivais e derrote o chefão na última pista. Clique em iniciar para liberar a música e começar.</p>
+            <div class="overlay-actions">
+              <button id="startButton" class="primary-action" type="button">Iniciar corrida</button>
+              <button id="howToButton" class="secondary-action" type="button">Controles</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+        <div class="screen-speedometer" aria-label="Velocímetro digital e analógico">
+          <div class="speedometer-heading">
+            <span>Velocímetro</span>
+            <strong><span id="speedometerValue">0</span> km/h</strong>
+          </div>
+          <div class="speedometer-dial" aria-hidden="true">
+            <span class="dial-tick dial-tick-left">0</span>
+            <span class="dial-tick dial-tick-mid">210</span>
+            <span class="dial-tick dial-tick-right">420</span>
+            <span id="speedNeedle" class="speed-needle"></span>
+            <span class="speed-center"></span>
+          </div>
+          <div class="gear-row">Marcha <strong id="gearValue">N</strong></div>
+        </div>
+
+        <div class="mobile-controls" aria-label="Controles para celular">
+          <div class="control-cluster left-cluster">
+            <button type="button" class="control-button steer" data-control="left" aria-label="Virar para esquerda">◀</button>
+            <button type="button" class="control-button steer" data-control="right" aria-label="Virar para direita">▶</button>
+          </div>
+          <div class="control-cluster right-cluster">
+            <button type="button" class="control-button accelerate" data-control="accelerate" aria-label="Acelerar">ACELERAR</button>
+            <button type="button" class="control-button brake" data-control="brake" aria-label="Frear">FREIO</button>
+            <button type="button" class="control-button turbo" data-control="turbo" aria-label="Usar turbo">TURBO</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="hud-panel" aria-label="Painel do carro">
+        <div class="speed-box">
+          <span>Velocímetro</span>
+          <strong><span id="speedValue">0</span> km/h</strong>
+          <div class="speed-track" aria-hidden="true"><span id="speedBar"></span></div>
+        </div>
+        <div class="meter">
+          <label for="fuelFill">Combustível</label>
+          <div class="meter-track"><span id="fuelFill"></span></div>
+        </div>
+        <div class="meter">
+          <label for="turboFill">Turbo</label>
+          <div class="meter-track"><span id="turboFill"></span></div>
+        </div>
+        <div class="meter">
+          <label for="carFill">Carro</label>
+          <div class="meter-track"><span id="carFill"></span></div>
+        </div>
+        <div class="lap-box">
+          <span>Volta</span>
+          <strong id="lapValue">1 / 2</strong>
+        </div>
+      </section>
+
+      <section class="instructions">
+        <p><strong>PC:</strong> setas ou WASD para dirigir/acelerar, Espaço para turbo, P para pausar, M para música.</p>
+        <p><strong>Celular:</strong> segure ACELERAR no canto direito para ganhar velocidade; use TURBO para passar dos 300 km/h. Também dá para arrastar o dedo na pista para ajustar a direção.</p>
+      </section>
+    </main>
+  </div>
+
+  <audio id="bgMusic" src="assets/audio/topgear-theme.mp3" preload="auto" loop></audio>
+  <script src="js/game.js"></script>
+</body>
+</html>
